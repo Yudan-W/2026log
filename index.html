@@ -1,0 +1,517 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>2026 丹丹 Life Log</title>
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        forest: { 50: '#f4f7f5', 100: '#e6efe9', 200: '#c5decb', 600: '#4a7c59', 800: '#2c4c3b', 900: '#1a2f24' },
+                        earth: { 50: '#faf9f6', 100: '#f0ece3', 200: '#e0d8c3', 300: '#c2b8a3', 500: '#8c7e66', 600: '#6b5e49' },
+                        cat: {
+                            work: { bg: 'bg-stone-200', text: 'text-stone-700', border: 'border-stone-300', dot: 'bg-stone-400' }, 
+                            study: { bg: 'bg-yellow-300', text: 'text-yellow-900', border: 'border-yellow-400', dot: 'bg-yellow-400' }, 
+                            life: { bg: 'bg-emerald-100', text: 'text-emerald-800', border: 'border-emerald-200', dot: 'bg-emerald-400' }, 
+                            sport: { bg: 'bg-rose-200', text: 'text-rose-800', border: 'border-rose-300', dot: 'bg-rose-400' }  
+                        }
+                    },
+                    fontFamily: {
+                        serif: ['"Songti SC"', '"Noto Serif SC"', 'SimSun', 'Georgia', 'serif'],
+                        sans: ['system-ui', '-apple-system', 'sans-serif'],
+                        mono: ['Menlo', 'Monaco', 'Courier New', 'monospace'],
+                    },
+                    animation: { 'float': 'float 10s ease-in-out infinite' },
+                    keyframes: { float: { '0%, 100%': { transform: 'translateY(0)' }, '50%': { transform: 'translateY(-10px)' } } }
+                }
+            }
+        }
+    </script>
+    
+    <style>
+        body { 
+            background-color: #f2f0eb;
+            background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.65' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)' opacity='0.05'/%3E%3C/svg%3E");
+            color: #2c4c3b;
+            overflow-x: hidden;
+        }
+        .hide-scrollbar::-webkit-scrollbar { display: none; }
+        .hide-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+        .animate-fade-in { animation: fadeIn 0.3s cubic-bezier(0.2, 0.8, 0.2, 1) forwards; }
+        
+        .bg-quote {
+            position: fixed; z-index: 0;
+            color: rgba(44, 76, 59, 0.24);
+            font-family: "Songti SC", "SimSun", serif;
+            font-weight: 600; pointer-events: none; user-select: none; white-space: nowrap;
+            letter-spacing: 0.1em; text-shadow: 1px 1px 0px rgba(255,255,255,0.6);
+        }
+        
+        .time-grid-line { border-top: 1px dashed rgba(140, 126, 102, 0.15); width: 100%; height: 60px; box-sizing: border-box; }
+        .timeline-marker { position: absolute; width: 100%; border-top: 2px dotted; z-index: 5; pointer-events: none; }
+    </style>
+</head>
+<body class="font-sans antialiased">
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const { useState, useEffect, useMemo, useRef } = React;
+
+        // --- Supabase 配置 (使用你提供的信息) ---
+        const SUPABASE_URL = 'https://bsfjzoyszxfggvdllnkw.supabase.co';
+        const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJzZmp6b3lzenhmZ2d2ZGxsbmt3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3Njc1NTM2MDgsImV4cCI6MjA4MzEyOTYwOH0.TqXdsVOjl0d9N9CKJ3pu_xMay7k66nm3AfhJXjnS_K0';
+        const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+        const weekDays = ["周日", "周一", "周二", "周三", "周四", "周五", "周六"];
+        const START_HOUR = 7; 
+        const HOURS = Array.from({ length: 24 }, (_, i) => (i + START_HOUR) % 24);
+        const HOUR_HEIGHT = 60; 
+
+        const Icons = {
+            X: () => <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>,
+            Trash: () => <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg>,
+            CheckSquare: ({checked}) => checked ? (
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#f59e0b" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="animate-fade-in">
+                    <circle cx="12" cy="12" r="4" fill="#fbbf24" fillOpacity="0.3"/>
+                    <path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/>
+                </svg>
+            ) : (
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-earth-300"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/></svg>
+            ),
+            Sun: () => <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#f59e0b" strokeWidth="2"><circle cx="12" cy="12" r="5"/><path d="M12 1v2"/><path d="M12 21v2"/><path d="M4.22 4.22l1.42 1.42"/><path d="M18.36 18.36l1.42 1.42"/><path d="M1 12h2"/><path d="M21 12h2"/><path d="M4.22 19.78l1.42-1.42"/><path d="M18.36 5.64l1.42-1.42"/></svg>,
+            Moon: () => <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#6366f1" strokeWidth="2"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/></svg>,
+            Edit: () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"></path></svg>,
+            Chart: () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="12" y1="20" x2="12" y2="10"/><line x1="18" y1="20" x2="18" y2="4"/><line x1="6" y1="20" x2="6" y2="16"/></svg>,
+            Download: () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>,
+            Upload: () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+        };
+
+        const DEFAULT_QUOTES = ["你原本就很优秀", "慢慢来，比较快", "星光不问赶路人", "Design Your 2026", "享受学习的多巴胺", "像树一样生长"];
+        const CATEGORIES = {
+            work: { id: 'work', label: '工作☕', bg: 'bg-stone-200', text: 'text-stone-700', border: 'border-stone-300', dot: 'bg-stone-400' }, 
+            study: { id: 'study', label: '学习🌻', bg: 'bg-yellow-300', text: 'text-yellow-900', border: 'border-yellow-400', dot: 'bg-yellow-400' }, 
+            life: { id: 'life', label: '生活🌿', bg: 'bg-emerald-100', text: 'text-emerald-800', border: 'border-emerald-200', dot: 'bg-emerald-400' }, 
+            sport: { id: 'sport', label: '运动🏃‍♀️', bg: 'bg-rose-200', text: 'text-rose-800', border: 'border-rose-300', dot: 'bg-rose-400' }  
+        };
+
+        const generateData = () => {
+            const cycles = [];
+            let currentDate = new Date('2026-01-01');
+            for (let i = 1; i <= 36; i++) {
+                let duration = (i === 36) ? 15 : 10; 
+                let cycleDays = [];
+                for(let d = 0; d < duration; d++) {
+                    cycleDays.push({
+                        dateStr: currentDate.toLocaleDateString('en-CA'),
+                        dayNum: currentDate.getDate(),
+                        weekDay: weekDays[currentDate.getDay()],
+                        reflection: '',
+                        wakeTime: '', sleepTime: '', 
+                        tasks: []
+                    });
+                    currentDate.setDate(currentDate.getDate() + 1);
+                }
+                cycles.push({ id: i, startDate: cycleDays[0].dateStr, endDate: cycleDays[cycleDays.length-1].dateStr, days: cycleDays, majorGoals: [], reflection: '' });
+            }
+            return cycles;
+        };
+
+        const timeToPx = (timeStr) => {
+            if (!timeStr) return -100;
+            const [h, m] = timeStr.split(':').map(Number);
+            let adjustedH = h - START_HOUR;
+            if (adjustedH < 0) adjustedH += 24;
+            return (adjustedH * 60 + m) * (HOUR_HEIGHT / 60);
+        };
+
+        const durationPx = (start, end) => {
+            if (!start || !end) return 60;
+            const [h1, m1] = start.split(':').map(Number);
+            const [h2, m2] = end.split(':').map(Number);
+            let diff = (h2 * 60 + m2) - (h1 * 60 + m1);
+            if (diff < 0) diff += 24 * 60;
+            return diff * (HOUR_HEIGHT / 60);
+        };
+
+        const calculateSleepStats = (days) => {
+            let totalSleepMins = 0, sleepCount = 0, totalWakeMins = 0, totalBedtimeMins = 0;
+            days.forEach(d => {
+                if(d.wakeTime && d.sleepTime) {
+                    const [wh, wm] = d.wakeTime.split(':').map(Number);
+                    const [sh, sm] = d.sleepTime.split(':').map(Number);
+                    let startMins = sh * 60 + sm;
+                    let endMins = wh * 60 + wm;
+                    if(endMins < startMins) endMins += 24 * 60;
+                    totalSleepMins += (endMins - startMins);
+                    totalWakeMins += (wh * 60 + wm);
+                    sleepCount++;
+                    let bedMins = sh * 60 + sm;
+                    if (sh < 12) bedMins += 24 * 60;
+                    totalBedtimeMins += bedMins;
+                }
+            });
+            if(sleepCount === 0) return null;
+            const avgDur = totalSleepMins / sleepCount;
+            const h = Math.floor(avgDur / 60), m = Math.round(avgDur % 60);
+            const avgWake = totalWakeMins / sleepCount;
+            const wh = Math.floor(avgWake / 60), wm = Math.round(avgWake % 60);
+            let avgBed = totalBedtimeMins / sleepCount;
+            if (avgBed >= 24 * 60) avgBed -= 24 * 60;
+            const bh = Math.floor(avgBed / 60), bm = Math.round(avgBed % 60);
+            return { avgDuration: `${h}h ${m}m`, avgWake: `${wh.toString().padStart(2,'0')}:${wm.toString().padStart(2,'0')}`, avgSleep: `${bh.toString().padStart(2,'0')}:${bm.toString().padStart(2,'0')}` };
+        };
+
+        function App() {
+            const [cycles, setCycles] = useState([]);
+            const [quotes, setQuotes] = useState(DEFAULT_QUOTES);
+            const [loading, setLoading] = useState(true);
+            const [syncing, setSyncing] = useState(false);
+            
+            const [activeCycleId, setActiveCycleId] = useState(null);
+            const [expandedDayDate, setExpandedDayDate] = useState(null); 
+            const [showSettings, setShowSettings] = useState(false);
+            const [showGlobalStats, setShowGlobalStats] = useState(false);
+            const [editingTask, setEditingTask] = useState(null);
+            const fileInputRef = useRef(null);
+
+            // --- 云端同步逻辑 ---
+            useEffect(() => {
+                async function loadInitialData() {
+                    const { data, error } = await supabaseClient
+                        .from('plan_data')
+                        .select('content')
+                        .eq('id', 1)
+                        .single();
+                    
+                    if (data && data.content) {
+                        setCycles(data.content.cycles || generateData());
+                        setQuotes(data.content.quotes || DEFAULT_QUOTES);
+                    } else {
+                        const initCycles = generateData();
+                        setCycles(initCycles);
+                        await supabaseClient.from('plan_data').upsert({ id: 1, content: { cycles: initCycles, quotes: DEFAULT_QUOTES } });
+                    }
+                    setLoading(false);
+                }
+                loadInitialData();
+            }, []);
+
+            useEffect(() => {
+                if (!loading) {
+                    const timer = setTimeout(async () => {
+                        setSyncing(true);
+                        await supabaseClient.from('plan_data').upsert({ id: 1, content: { cycles, quotes } });
+                        setSyncing(false);
+                    }, 2000);
+                    return () => clearTimeout(timer);
+                }
+            }, [cycles, quotes, loading]);
+
+            const todayInfo = useMemo(() => {
+                const now = new Date();
+                const todayStr = now.toLocaleDateString('en-CA');
+                let foundCycle = null, foundDay = null, dayIdx = 0;
+                cycles.forEach(c => {
+                    const d = c.days.find(day => day.dateStr === todayStr);
+                    if(d) { foundCycle = c; foundDay = d; dayIdx = c.days.indexOf(d) + 1; }
+                });
+                return { dateStr: todayStr, cycle: foundCycle, dayIdx };
+            }, [cycles]);
+
+            const activeCycle = useMemo(() => cycles.find(c => c.id === activeCycleId), [cycles, activeCycleId]);
+            const updateCycle = (fn) => setCycles(prev => prev.map(c => c.id === activeCycleId ? fn(c) : c));
+
+            const saveTask = (taskData) => {
+                if (!taskData.text.trim()) return;
+                updateCycle(c => ({
+                    ...c, days: c.days.map(d => {
+                        if (d.dateStr !== expandedDayDate) return d;
+                        let newTasks = d.tasks;
+                        if (editingTask.isNew) newTasks = [...d.tasks, { ...taskData, id: Date.now(), completed: false }];
+                        else newTasks = d.tasks.map(t => t.id === taskData.id ? { ...t, ...taskData } : t);
+                        return { ...d, tasks: newTasks };
+                    })
+                }));
+                setEditingTask(null);
+            };
+
+            const deleteTask = (taskId) => {
+                if(confirm('删除此任务？')) {
+                    updateCycle(c => ({ ...c, days: c.days.map(d => d.dateStr === expandedDayDate ? { ...d, tasks: d.tasks.filter(t => t.id !== taskId) } : d) }));
+                    setEditingTask(null);
+                }
+            };
+
+            const toggleTaskComplete = (dateStr, taskId) => {
+                updateCycle(c => ({
+                    ...c, days: c.days.map(d => d.dateStr !== dateStr ? d : {
+                        ...d, tasks: d.tasks.map(t => t.id === taskId ? { ...t, completed: !t.completed } : t)
+                    })
+                }));
+            };
+
+            const handleGridClick = (e) => {
+                const rect = e.currentTarget.getBoundingClientRect();
+                const y = e.clientY - rect.top + e.currentTarget.scrollTop;
+                const offsetH = Math.floor(y / HOUR_HEIGHT);
+                const realH = (offsetH + START_HOUR) % 24;
+                const timeStr = `${realH.toString().padStart(2, '0')}:00`;
+                const endH = (realH + 1) % 24;
+                const endTimeStr = `${endH.toString().padStart(2, '0')}:00`;
+                setEditingTask({ isNew: true, data: { category: 'study', planStart: timeStr, planEnd: endTimeStr, actStart: '', actEnd: '', text: '' } });
+            };
+
+            const getGlobalStats = () => calculateSleepStats(cycles.flatMap(c => c.days));
+
+            const exportData = () => {
+                const blob = new Blob([JSON.stringify({ cycles, quotes })], { type: "application/json" });
+                const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = `dan_lifelog_backup.json`; a.click();
+            };
+            const importData = (e) => {
+                const reader = new FileReader();
+                reader.onload = (ev) => {
+                    try {
+                        const data = JSON.parse(ev.target.result);
+                        if(data.cycles) setCycles(data.cycles);
+                        if(data.quotes) setQuotes(data.quotes);
+                        alert("恢复成功"); setShowSettings(false);
+                    } catch(err) { alert("文件错误"); }
+                };
+                if(e.target.files[0]) reader.readAsText(e.target.files[0]);
+            };
+
+            if (loading) return <div className="h-screen flex items-center justify-center font-serif text-forest-800 bg-earth-50">正在加载云端数据...</div>;
+
+            return (
+                <div className="min-h-screen pb-12 relative overflow-hidden font-sans">
+                    {/* 同步状态指示器 */}
+                    <div className="fixed top-2 right-4 z-[100] text-[10px] font-mono text-forest-600 opacity-40">
+                        {syncing ? '● SYNCING...' : '○ CLOUD SAVED'}
+                    </div>
+
+                    {quotes.map((q, i) => (
+                        <div key={i} className="bg-quote text-2xl md:text-3xl animate-float" style={{top: `${(i*18)%85+5}%`, left: `${(i*35)%80+2}%`, animationDelay: `${i*1.5}s`, transform: `rotate(${i%2===0?-3:3}deg)`}}>{q}</div>
+                    ))}
+                    
+                    <div className="fixed bottom-8 right-8 z-40 flex flex-col items-end gap-2">
+                        {showSettings && (
+                            <div className="bg-white/95 backdrop-blur p-4 rounded-2xl shadow-xl border border-earth-200 animate-fade-in flex flex-col gap-4 w-64">
+                                <div><div className="text-xs font-bold text-earth-400 uppercase mb-2">语录</div>
+                                <div className="flex gap-2"><input type="text" id="newQuote" placeholder="输入..." className="bg-earth-50 border-none p-1.5 text-sm outline-none rounded flex-1"/><button onClick={()=>{const q=document.getElementById('newQuote'); if(q.value.trim()){setQuotes([...quotes, q.value]);q.value='';}}} className="bg-forest-600 text-white px-2 rounded text-xs">OK</button></div></div>
+                                <hr className="border-earth-100"/>
+                                <div className="flex gap-2">
+                                    <button onClick={exportData} className="flex-1 bg-yellow-100 text-yellow-800 py-2 rounded-lg text-xs font-bold"><Icons.Download/> 备份</button>
+                                    <button onClick={()=>fileInputRef.current.click()} className="flex-1 bg-earth-100 text-earth-600 py-2 rounded-lg text-xs font-bold"><Icons.Upload/> 恢复</button>
+                                    <input type="file" ref={fileInputRef} onChange={importData} className="hidden" accept=".json"/>
+                                </div>
+                            </div>
+                        )}
+                        <button onClick={()=>{setShowGlobalStats(true)}} className="bg-white/90 p-3 rounded-full shadow-lg text-indigo-500 hover:text-indigo-700 transition border border-earth-100" title="全年睡眠统计"><Icons.Chart/></button>
+                        <button onClick={()=>setShowSettings(!showSettings)} className="bg-white/90 p-3 rounded-full shadow-lg text-earth-500 hover:text-forest-800 transition border border-earth-100"><Icons.Edit/></button>
+                    </div>
+
+                    {showGlobalStats && (
+                        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/30 backdrop-blur-sm" onClick={()=>setShowGlobalStats(false)}>
+                            <div className="bg-white p-8 rounded-3xl shadow-2xl max-w-sm w-full animate-fade-in" onClick={e=>e.stopPropagation()}>
+                                <h3 className="text-xl font-serif font-bold text-forest-800 mb-6 text-center">2026 睡眠大数据</h3>
+                                {(() => {
+                                    const stats = getGlobalStats();
+                                    if(!stats) return <p className="text-center text-earth-400">暂无数据，请先记录每日睡眠。</p>;
+                                    return (
+                                        <div className="space-y-6">
+                                            <div className="text-center"><div className="text-4xl font-bold text-indigo-600">{stats.avgDuration}</div><div className="text-xs uppercase text-earth-400 tracking-widest mt-1">平均睡眠时长</div></div>
+                                            <div className="grid grid-cols-2 gap-4">
+                                                <div className="text-center"><div className="text-2xl font-bold text-indigo-500">{stats.avgSleep}</div><div className="text-xs uppercase text-earth-400 tracking-widest mt-1">平均入睡</div></div>
+                                                <div className="text-center"><div className="text-2xl font-bold text-yellow-600">{stats.avgWake}</div><div className="text-xs uppercase text-earth-400 tracking-widest mt-1">平均起床</div></div>
+                                            </div>
+                                        </div>
+                                    );
+                                })()}
+                            </div>
+                        </div>
+                    )}
+
+                    <div className="max-w-7xl mx-auto px-4 sm:px-6 relative z-10">
+                        <header className="pt-8 pb-6 flex flex-col md:flex-row justify-between items-end gap-6">
+                            <h1 className="text-4xl md:text-5xl font-serif font-bold text-forest-800">丹 Life Log <span className="text-yellow-500">.</span></h1>
+                            <div className="bg-white/80 backdrop-blur border border-forest-100 shadow-sm rounded-full px-5 py-2.5 flex items-center gap-3">
+                                <div className={`p-1.5 rounded-full ${todayInfo.cycle ? 'bg-yellow-100 text-yellow-600' : 'bg-earth-100 text-earth-400'}`}><Icons.Sun/></div>
+                                <div className="text-sm font-medium text-forest-900">
+                                    {todayInfo.cycle ? <span>Today: <span className="font-bold border-b-2 border-yellow-200">{todayInfo.dateStr}</span> · Cycle {todayInfo.cycle.id} - Day {todayInfo.dayIdx}</span> : <span>Today: {todayInfo.dateStr}</span>}
+                                </div>
+                            </div>
+                        </header>
+
+                        <div className="grid grid-cols-4 sm:grid-cols-6 md:grid-cols-9 gap-3 md:gap-4">
+                            {cycles.map((cycle) => {
+                                const total = cycle.majorGoals.length + cycle.days.reduce((a,d)=>a+d.tasks.length,0);
+                                const done = cycle.majorGoals.filter(g=>g.completed).length + cycle.days.reduce((a,d)=>a+d.tasks.filter(t=>t.completed).length,0);
+                                const progress = total===0?0:done/total;
+                                const hasContent = total > 0;
+                                const isCurrent = todayInfo.cycle && todayInfo.cycle.id === cycle.id;
+                                let bgStyle = hasContent ? (progress === 0 ? {backgroundColor: '#e6efe9'} : {backgroundColor: '#2c4c3b', opacity: 0.15 + (progress*0.85)}) : {backgroundColor: '#f0ece3'};
+                                return (
+                                    <button key={cycle.id} onClick={()=>{setActiveCycleId(cycle.id); setExpandedDayDate(cycle.days[0].dateStr);}}
+                                        className={`relative aspect-square rounded-2xl overflow-hidden transition-all duration-300 group ${isCurrent ? 'ring-4 ring-yellow-200 shadow-lg scale-105' : 'hover:shadow-md'}`}>
+                                        <div className="absolute inset-0 transition-all duration-500" style={bgStyle}></div>
+                                        <div className={`absolute inset-0 flex flex-col items-center justify-center ${progress > 0.5 ? 'text-white' : 'text-forest-800'}`}>
+                                            <span className="text-xs font-serif opacity-70">Cycle</span><span className="text-2xl font-bold font-serif">{cycle.id}</span>
+                                            {hasContent && <span className={`text-[10px] font-mono mt-0.5 font-bold ${progress>0.5?'text-white/90':'text-forest-600'}`}>{Math.round(progress*100)}%</span>}
+                                        </div>
+                                    </button>
+                                );
+                            })}
+                        </div>
+
+                        {activeCycle && (
+                            <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 md:p-6">
+                                <div className="absolute inset-0 bg-forest-900/30 backdrop-blur-sm" onClick={() => setActiveCycleId(null)}></div>
+                                <div className="bg-[#fcfbf9] w-full max-w-7xl h-[95vh] rounded-3xl shadow-2xl flex flex-col overflow-hidden animate-fade-in relative border border-earth-100">
+                                    <div className="bg-earth-50/80 border-b border-earth-100 p-4 flex justify-between items-center shrink-0">
+                                        <div><h2 className="text-2xl font-serif font-bold text-forest-800">Cycle {activeCycle.id}</h2><p className="text-xs text-earth-500 font-mono">{activeCycle.startDate} ~ {activeCycle.endDate}</p></div>
+                                        <button onClick={()=>setActiveCycleId(null)} className="p-2 hover:bg-earth-100 rounded-full text-earth-400"><Icons.X/></button>
+                                    </div>
+
+                                    <div className="flex-1 overflow-hidden flex flex-col md:flex-row bg-white">
+                                        <div className="md:w-72 flex flex-col border-r border-earth-100 bg-[#faf9f6]">
+                                            <div className="p-4 border-b border-earth-100 bg-white/50">
+                                                <div className="text-xs font-bold text-earth-400 uppercase mb-2">Cycle Goals</div>
+                                                <div className="space-y-2 mb-3">
+                                                    {activeCycle.majorGoals.map(g => (
+                                                        <div key={g.id} className="flex items-center gap-2 bg-white p-3 rounded-xl border border-earth-100 shadow-sm hover:border-forest-200 transition group">
+                                                            <button onClick={() => setCycles(prev => prev.map(c => c.id === activeCycle.id ? { ...c, majorGoals: c.majorGoals.map(gl => gl.id === g.id ? { ...gl, completed: !gl.completed } : gl) } : c))} className={g.completed ? 'text-forest-600 shrink-0' : 'text-earth-300 shrink-0'}><Icons.CheckSquare checked={g.completed}/></button>
+                                                            <span className={`flex-1 font-serif text-lg font-bold ${g.completed ? 'line-through text-earth-300' : 'text-forest-800'}`}>{g.text}</span>
+                                                            <button onClick={() => {if(confirm('删除此目标？')) {setCycles(prev => prev.map(c => c.id === activeCycle.id ? { ...c, majorGoals: c.majorGoals.filter(gl => gl.id !== g.id) } : c));}}} className="text-earth-200 hover:text-rose-400 opacity-0 group-hover:opacity-100 transition shrink-0"><Icons.Trash/></button>
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                                <input type="text" placeholder="+ 周期大目标" className="bg-transparent border-b-2 border-earth-200 w-full text-sm py-1 outline-none focus:border-forest-400 placeholder-earth-300 transition-colors text-forest-800" onKeyDown={(e)=>{if(e.key==='Enter' && e.target.value.trim()){const newGoalText = e.target.value; setCycles(prev=>prev.map(c=>c.id===activeCycle.id?{...c, majorGoals:[...c.majorGoals,{id:Date.now(),text:newGoalText,completed:false}]}:c)); e.target.value='';}}}/>
+                                            </div>
+                                            <div className="flex-1 overflow-y-auto custom-scrollbar p-2 space-y-1">
+                                                {activeCycle.days.map(day => {
+                                                    const isSelected = expandedDayDate === day.dateStr;
+                                                    const isToday = day.dateStr === todayInfo.dateStr;
+                                                    return (
+                                                        <div key={day.dateStr} onClick={() => setExpandedDayDate(day.dateStr)} className={`p-3 rounded-xl cursor-pointer transition-all ${isSelected ? 'bg-white shadow ring-1 ring-forest-100' : 'hover:bg-earth-100/50'}`}>
+                                                            <div className="flex justify-between items-baseline mb-1"><span className={`text-sm font-bold font-serif ${isToday ? 'text-yellow-600' : 'text-forest-800'}`}>{day.dateStr.slice(5)}</span><span className="text-xs text-earth-400">{day.weekDay}</span></div>
+                                                            <div className="flex flex-wrap gap-1 min-h-[6px]">{day.tasks.map(t => <div key={t.id} className={`w-2 h-2 rounded-full ${t.completed ? (CATEGORIES[t.category]||CATEGORIES.work).dot : 'border border-earth-200'}`}/>)}</div>
+                                                        </div>
+                                                    );
+                                                })}
+                                            </div>
+                                            <div className="p-4 border-t border-earth-100 bg-earth-50/50">
+                                                {(() => {const stats = calculateSleepStats(activeCycle.days); if(stats) return <div className="mb-4 text-xs text-earth-500 font-mono">周均睡眠: {stats.avgDuration} | 早起: {stats.avgWake} | 入睡: {stats.avgSleep}</div>;})()}
+                                                <label className="text-xs font-bold text-earth-500 uppercase tracking-widest mb-2 block">周期复盘 (Review)</label>
+                                                <textarea className="w-full bg-white border border-earth-200 rounded-xl p-3 text-sm h-24 resize-none outline-none focus:ring-1 focus:ring-forest-200 text-forest-800 placeholder-earth-300" value={activeCycle.reflection} onChange={(e)=>updateCycle(c=>({...c, reflection: e.target.value}))}/>
+                                            </div>
+                                        </div>
+
+                                        <div className="flex-1 overflow-hidden flex flex-col bg-white relative">
+                                            {activeCycle.days.filter(d => d.dateStr === expandedDayDate).map(day => (
+                                                <div key={day.dateStr} className="flex-1 flex flex-col h-full animate-fade-in">
+                                                    <div className="p-4 border-b border-earth-100 shrink-0 flex flex-col gap-3">
+                                                        <div className="flex justify-between items-center">
+                                                            <h3 className="text-2xl font-serif font-bold text-forest-800">{day.dateStr} <span className="text-sm font-normal text-earth-400 ml-2">{day.weekDay}</span></h3>
+                                                            <div className="flex gap-4 items-center bg-earth-50 px-3 py-1 rounded-full border border-earth-100">
+                                                                <div className="flex items-center gap-1"><Icons.Sun/><input type="time" className="bg-transparent text-sm outline-none w-20 text-center" value={day.wakeTime} onChange={(e)=>updateCycle(c=>({...c, days: c.days.map(d=>d.dateStr===day.dateStr?{...d, wakeTime:e.target.value}:d)}))}/></div>
+                                                                <div className="w-px h-4 bg-earth-200"></div>
+                                                                <div className="flex items-center gap-1"><Icons.Moon/><input type="time" className="bg-transparent text-sm outline-none w-20 text-center" value={day.sleepTime} onChange={(e)=>updateCycle(c=>({...c, days: c.days.map(d=>d.dateStr===day.dateStr?{...d, sleepTime:e.target.value}:d)}))}/></div>
+                                                            </div>
+                                                        </div>
+                                                        <textarea className="w-full bg-earth-50 p-2 rounded-lg text-sm border border-transparent focus:bg-white focus:border-forest-200 outline-none resize-none h-14 transition-all placeholder-earth-300 font-serif" placeholder="今日寄语与反思..." value={day.reflection} onChange={(e)=>updateCycle(c=>({...c, days: c.days.map(d=>d.dateStr===day.dateStr?{...d, reflection:e.target.value}:d)}))}/>
+                                                    </div>
+
+                                                    <div className="flex-1 overflow-y-auto custom-scrollbar relative" onClick={handleGridClick}>
+                                                        <div className="flex min-h-[1440px] relative">
+                                                            <div className="w-12 shrink-0 border-r border-earth-50 bg-earth-50/30 text-xs text-earth-400 font-mono relative select-none">
+                                                                {HOURS.map((h, i) => (<div key={h} className="absolute w-full text-right pr-2" style={{ top: `${i * 60}px`, transform: 'translateY(-50%)' }}>{h.toString().padStart(2, '0')}:00</div>))}
+                                                            </div>
+
+                                                            <div className="flex-1 relative">
+                                                                {HOURS.map(h => <div key={h} className="time-grid-line absolute w-full" style={{top: (h < START_HOUR ? h + 24 - START_HOUR : h - START_HOUR) * HOUR_HEIGHT}}></div>)}
+                                                                {day.wakeTime && <div className="timeline-marker border-yellow-400" style={{top: timeToPx(day.wakeTime)}}> <span className="bg-yellow-400 text-white text-[10px] px-1 ml-1 rounded">起床</span></div>}
+                                                                {day.sleepTime && <div className="timeline-marker border-indigo-400" style={{top: timeToPx(day.sleepTime)}}> <span className="bg-indigo-400 text-white text-[10px] px-1 ml-1 rounded">入睡</span></div>}
+
+                                                                <div className="flex h-full absolute inset-0">
+                                                                    <div className="w-3/5 border-r border-earth-50/50 relative">
+                                                                        <div className="absolute top-2 right-2 text-[10px] text-earth-300 uppercase font-bold">Plan 计划</div>
+                                                                        {day.tasks.map(task => {
+                                                                            const cat = CATEGORIES[task.category] || CATEGORIES.work;
+                                                                            const top = timeToPx(task.planStart);
+                                                                            const height = Math.max(30, durationPx(task.planStart, task.planEnd));
+                                                                            return (
+                                                                                <div key={task.id} onClick={(e) => { e.stopPropagation(); setEditingTask({ isNew: false, data: task }); }}
+                                                                                     className={`absolute left-1 right-1 rounded-lg border-l-4 shadow-sm hover:shadow-md transition-all cursor-pointer overflow-hidden flex flex-col justify-center px-2 z-10 ${cat.bg} ${cat.border} ${cat.text}`}
+                                                                                     style={{ top: `${top}px`, height: `${height}px` }}>
+                                                                                    <div className="flex justify-between items-start leading-tight">
+                                                                                        <span className={`font-bold text-base font-serif tracking-tight ${task.completed ? 'opacity-60 line-through decoration-2' : ''}`}>{task.text}</span>
+                                                                                        <button onClick={(e) => { e.stopPropagation(); toggleTaskComplete(day.dateStr, task.id); }} className="hover:scale-110 transition"><Icons.CheckSquare checked={task.completed}/></button>
+                                                                                    </div>
+                                                                                </div>
+                                                                            );
+                                                                        })}
+                                                                    </div>
+
+                                                                    <div className="flex-1 bg-earth-50/10 relative">
+                                                                        <div className="absolute top-2 right-2 text-[10px] text-earth-300 uppercase font-bold">Actual 实际</div>
+                                                                        {day.tasks.filter(t => t.actStart && t.actEnd).map(task => {
+                                                                            const cat = CATEGORIES[task.category] || CATEGORIES.work;
+                                                                            const top = timeToPx(task.actStart);
+                                                                            const height = Math.max(32, durationPx(task.actStart, task.actEnd));
+                                                                            return (
+                                                                                <div key={`act-${task.id}`} 
+                                                                                     className={`absolute left-1 right-1 rounded-lg border-2 opacity-90 flex items-center justify-center text-sm font-serif italic ${cat.bg} ${cat.border} border-dashed`}
+                                                                                     style={{ top: `${top}px`, height: `${height}px` }}>
+                                                                                    ✨ {task.text}
+                                                                                </div>
+                                                                            );
+                                                                        })}
+                                                                    </div>
+                                                                </div>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+
+                        {editingTask && (
+                            <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/20 backdrop-blur-sm animate-fade-in">
+                                <div className="bg-white rounded-2xl shadow-2xl p-6 w-full max-w-sm border border-earth-100">
+                                    <h3 className="text-lg font-bold text-forest-800 mb-4">{editingTask.isNew ? '添加任务' : '编辑任务'}</h3>
+                                    <div className="space-y-4">
+                                        <input type="text" placeholder="任务名称..." className="w-full p-2 bg-earth-50 rounded border border-earth-200 outline-none focus:border-forest-400" value={editingTask.data.text} onChange={e => setEditingTask({...editingTask, data: {...editingTask.data, text: e.target.value}})} autoFocus/>
+                                        <div className="grid grid-cols-2 gap-4">
+                                            <div><label className="text-xs font-bold text-forest-600 block mb-1">计划 (Plan)</label><div className="flex gap-1 mb-1"><input type="time" className="w-full p-1 bg-earth-50 rounded border border-earth-200 text-xs" value={editingTask.data.planStart} onChange={e => setEditingTask({...editingTask, data: {...editingTask.data, planStart: e.target.value}})}/></div><div className="flex gap-1"><input type="time" className="w-full p-1 bg-earth-50 rounded border border-earth-200 text-xs" value={editingTask.data.planEnd} onChange={e => setEditingTask({...editingTask, data: {...editingTask.data, planEnd: e.target.value}})}/></div></div>
+                                            <div><label className="text-xs font-bold text-indigo-600 block mb-1">实际 (Actual)</label><div className="flex gap-1 mb-1"><input type="time" className="w-full p-1 bg-indigo-50 rounded border border-indigo-100 text-xs" value={editingTask.data.actStart} onChange={e => setEditingTask({...editingTask, data: {...editingTask.data, actStart: e.target.value}})}/></div><div className="flex gap-1"><input type="time" className="w-full p-1 bg-indigo-50 rounded border border-indigo-100 text-xs" value={editingTask.data.actEnd} onChange={e => setEditingTask({...editingTask, data: {...editingTask.data, actEnd: e.target.value}})}/></div></div>
+                                        </div>
+                                        <div><label className="text-xs text-earth-400 block mb-1">分类</label><div className="flex gap-2">{Object.values(CATEGORIES).map(cat => (<button key={cat.id} onClick={() => setEditingTask({...editingTask, data: {...editingTask.data, category: cat.id}})} className={`flex-1 py-1.5 rounded text-xs font-bold border ${editingTask.data.category === cat.id ? `${cat.bg} ${cat.text} border-current` : 'bg-earth-50 text-earth-400 border-transparent'}`}>{cat.label}</button>))}</div></div>
+                                        <div className="pt-2 flex gap-2">{!editingTask.isNew && <button onClick={() => deleteTask(editingTask.data.id)} className="p-2 text-red-400 hover:bg-red-50 rounded"><Icons.Trash/></button>}<button onClick={() => setEditingTask(null)} className="flex-1 py-2 text-earth-500 hover:bg-earth-50 rounded">取消</button><button onClick={() => saveTask(editingTask.data)} className="flex-1 py-2 bg-forest-600 text-white rounded font-bold hover:bg-forest-700 shadow-md">保存</button></div>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+                    </div>
+                </div>
+            );
+        }
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+</body>
+</html>
